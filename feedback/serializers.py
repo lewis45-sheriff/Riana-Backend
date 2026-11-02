@@ -128,3 +128,21 @@ class AlertAckSerializer(serializers.Serializer):
 class SendReplySerializer(serializers.Serializer):
     # Optional override; if omitted the saved AI draft is used.
     message = serializers.CharField(required=False, allow_blank=True)
+
+
+class EmailLogSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    to_email = serializers.CharField()
+    subject = serializers.CharField()
+    body = serializers.CharField()
+    kind = serializers.CharField()
+    status = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
+class PaginatedEmailsSerializer(serializers.Serializer):
+    items = EmailLogSerializer(many=True)
+    total = serializers.IntegerField()
+    page = serializers.IntegerField()
+    page_size = serializers.IntegerField()
+    page_count = serializers.IntegerField()

@@ -124,3 +124,30 @@ class FeedbackController:
 
     def get(self, response_id: int) -> Response | None:
         return self.responses.get_with_customer(response_id)
+
+    def generate_email_draft(self, response_id: int) -> tuple[str, bool] | None:
+        """AI-draft an email body appropriate to the respondent's rating."""
+        response = self.responses.get_with_customer(response_id)
+        if response is None:
+            return None
+        if is_detractor(response.classification):
+            return agent.draft_reply(response.customer, response)
+        return agent.draft_thankyou(response.customer, response)
+
+    def send_email_to_respondent(
+        self, response_id: int, message: str | None = None
+    ) -> dict | None:
+        """Email a respondent (any rating). Uses the given body or an AI draft."""
+        response = self.responses.get_with_customer(response_id)
+        if response is None:
+            return None
+        customer = response.customer
+        if not customer.email:
+            return {"status": "skipped", "reason": "customer has no email"}
+        body = message
+        if not body or not body.strip():
+            if is_detractor(response.classification):
+                body, _ = agent.draft_reply(customer, response)
+            else:
+                body, _ = agent.draft_thankyou(customer, response)
+        return notifications.send_reply_to_customer(customer, body)

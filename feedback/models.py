@@ -72,3 +72,31 @@ class CommentInsight(models.Model):
 
     class Meta:
         db_table = "comment_insights"
+
+
+class EmailLog(models.Model):
+    """A record of every email the system sends, for audit + dashboard view."""
+
+    # What kind of email this was.
+    KIND_ALERT = "alert"          # detractor notification to the care rep
+    KIND_THANKYOU = "thankyou"    # auto thank-you to a satisfied customer
+    KIND_REPLY = "reply"          # manual follow-up reply to a customer
+    KIND_OTHER = "other"
+
+    STATUS_SENT = "sent"          # delivered via SMTP
+    STATUS_LOGGED = "logged"      # SMTP not configured — console/log only
+    STATUS_FAILED = "failed"
+
+    to_email = models.CharField(max_length=254)
+    subject = models.CharField(max_length=255)
+    body = models.TextField()
+    kind = models.CharField(max_length=16, default=KIND_OTHER)
+    status = models.CharField(max_length=16, default=STATUS_SENT)
+    customer = models.ForeignKey(
+        Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name="emails"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "email_logs"
+        ordering = ["-created_at"]

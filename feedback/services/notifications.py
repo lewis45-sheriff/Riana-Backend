@@ -48,10 +48,38 @@ def build_notification_email(customer, response) -> tuple[str, str]:
     return subject, body
 
 
-def send_email(to: str, subject: str, body: str, reply_to: str | None = None) -> bool:
-    """Send an email via SMTP. Returns True if sent, False if logged-only."""
+def _log_email(to: str, subject: str, body: str, kind: str, status: str, customer=None) -> None:
+    """Persist a record of an outgoing email. Never raises to the caller."""
+    try:
+        from feedback.models import EmailLog
+
+        EmailLog.objects.create(
+            to_email=to or "",
+            subject=subject,
+            body=body,
+            kind=kind,
+            status=status,
+            customer=customer,
+        )
+    except Exception:
+        logger.exception("Failed to record EmailLog; continuing")
+
+
+def send_email(
+    to: str,
+    subject: str,
+    body: str,
+    reply_to: str | None = None,
+    kind: str = "other",
+    customer=None,
+) -> bool:
+    """Send an email via SMTP and record it in the email log.
+
+    Returns True if actually sent, False if only logged (SMTP not configured).
+    """
     if not settings.SMTP_HOST:
         logger.info("[email:console] to=%s subject=%s\n%s", to, subject, body)
+        _log_email(to, subject, body, kind, "logged", customer)
         return False
     try:
         msg = EmailMessage()
@@ -66,9 +94,11 @@ def send_email(to: str, subject: str, body: str, reply_to: str | None = None) ->
             if settings.SMTP_USER:
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             server.send_message(msg)
+        _log_email(to, subject, body, kind, "sent", customer)
         return True
     except Exception:  # pragma: no cover - network dependent
-        logger.exception("Failed to send alert email; continuing")
+        logger.exception("Failed to send email; continuing")
+        _log_email(to, subject, body, kind, "failed", customer)
         return False
 
 
@@ -76,7 +106,7 @@ def notify_care_rep(customer, response) -> list[str]:
     """Email the care rep a notification for this feedback. Returns channels."""
     channels = ["in_app"]  # the Alert row itself is the in-app notification
     subject, body = build_notification_email(customer, response)
-    send_email(settings.CARE_REP_EMAIL, subject, body)
+    send_email(settings.CARE_REP_EMAIL, subject, body, kind="alert", customer=customer)
     channels.append("email")  # console mode counts as an email attempt in demo
     return channels
 
@@ -96,6 +126,8 @@ def send_reply_to_customer(customer, body: str) -> dict:
         subject=subject,
         body=body,
         reply_to=settings.CARE_REP_EMAIL,
+        kind="reply",
+        customer=customer,
     )
     return {"status": "sent" if sent else "logged", "to": customer.email}
 
@@ -111,5 +143,7 @@ def send_thankyou_to_customer(customer, body: str) -> dict:
         subject=subject,
         body=body,
         reply_to=settings.CARE_REP_EMAIL,
+        kind="thankyou",
+        customer=customer,
     )
     return {"status": "sent" if sent else "logged", "to": customer.email}

@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 from feedback.controllers.ai_controller import AIController
 from feedback.controllers.alert_controller import AlertController
 from feedback.controllers.dashboard_controller import DashboardController
+from feedback.controllers.email_controller import EmailController
 from feedback.controllers.feedback_controller import FeedbackController
 from feedback.controllers.sms_controller import SMSController
 from feedback.serializers import (
@@ -24,9 +25,11 @@ from feedback.serializers import (
     AskRequestSerializer,
     AskResponseSerializer,
     DashboardSummarySerializer,
+    EmailLogSerializer,
     FeedbackCreateSerializer,
     FeedbackResultSerializer,
     InviteRequestSerializer,
+    PaginatedEmailsSerializer,
     PaginatedResponsesSerializer,
     ResponseSerializer,
     SendReplySerializer,
@@ -103,6 +106,60 @@ class FeedbackDetailView(APIView):
         if row is None:
             return DRFResponse({"detail": "Response not found"}, status=404)
         return DRFResponse(ResponseSerializer(row).data)
+
+
+class FeedbackDraftView(APIView):
+    """AI-draft an email for a respondent (reply for detractors, thanks else)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, _request: Request, response_id: int) -> DRFResponse:
+        result = FeedbackController().generate_email_draft(response_id)
+        if result is None:
+            return DRFResponse({"detail": "Response not found"}, status=404)
+        draft, degraded = result
+        return DRFResponse(
+            SmartReplySerializer({"draft": draft, "degraded": degraded}).data
+        )
+
+
+class FeedbackSendEmailView(APIView):
+    """Send an email to any respondent (incl. promoters/passives)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request, response_id: int) -> DRFResponse:
+        serializer = SendReplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = FeedbackController().send_email_to_respondent(
+            response_id, serializer.validated_data.get("message") or None
+        )
+        if result is None:
+            return DRFResponse({"detail": "Response not found"}, status=404)
+        return DRFResponse(result)
+
+
+class EmailListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> DRFResponse:
+        try:
+            page = int(request.query_params.get("page", 1))
+            page_size = int(request.query_params.get("page_size", 10))
+        except ValueError:
+            page, page_size = 1, 10
+        data = EmailController().paginate(page, page_size)
+        return DRFResponse(PaginatedEmailsSerializer(data).data)
+
+
+class EmailDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, _request: Request, email_id: int) -> DRFResponse:
+        row = EmailController().get(email_id)
+        if row is None:
+            return DRFResponse({"detail": "Email not found"}, status=404)
+        return DRFResponse(EmailLogSerializer(row).data)
 
 
 class DashboardSummaryView(APIView):
