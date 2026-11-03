@@ -29,11 +29,19 @@ INVITE_TEMPLATE = (
 
 
 def is_mock() -> bool:
+    if settings.SMS_PROVIDER == "smsgate":
+        return False  # Missing gateway credentials must fail rather than simulate a send.
     return not settings.AFRICASTALKING_API_KEY
 
 
 def send_sms(to: str, message: str) -> dict:
     """Send a single SMS. Returns a result dict. Never raises to the caller."""
+    if settings.SMS_PROVIDER == "smsgate":
+        from feedback.services.sim_gateway import send_message
+
+        return send_message(to, message)
+    if settings.SMS_PROVIDER != "africastalking":
+        return {"status": "error", "error": "Unknown SMS provider configuration"}
     if is_mock():
         logger.info("[sms:mock] to=%s message=%s", to, message)
         return {"status": "mock", "to": to, "message": message}
@@ -52,7 +60,12 @@ def send_sms(to: str, message: str) -> dict:
             data["from"] = settings.AFRICASTALKING_SENDER_ID
         resp = httpx.post(AT_SMS_URL, data=data, headers=headers, timeout=15)
         resp.raise_for_status()
-        return {"status": "sent", "provider": resp.json()}
+        provider = resp.json()
+        recipients = provider.get("SMSMessageData", {}).get("Recipients", [])
+        accepted = bool(recipients) and all(
+            r.get("statusCode") in {100, 101, 102} for r in recipients
+        )
+        return {"status": "accepted" if accepted else "error", "provider": provider}
     except Exception as exc:  # pragma: no cover - network dependent
         logger.exception("SMS send failed; continuing")
         return {"status": "error", "error": str(exc)}

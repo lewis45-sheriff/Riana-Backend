@@ -17,10 +17,13 @@ class SMSController:
         self.customers = CustomerRepository()
 
     def send_invite(self, phone: str, name: str | None = None) -> dict:
-        if name and self.customers.by_phone(phone) is None:
-            Customer.objects.create(name=name, phone=phone)
+        if self.customers.by_phone(phone) is None:
+            Customer.objects.create(name=name or f"SMS {phone[-4:]}", phone=phone)
         result = sms.send_invite(phone)
-        return {"ok": True, "result": result}
+        return {
+            "ok": result.get("status") in {"accepted", "queued", "sent", "mock"},
+            "result": result,
+        }
 
     def handle_inbound(self, from_: str, text: str) -> dict:
         parsed = sms.parse_three_digit_reply(text)
@@ -30,11 +33,7 @@ class SMSController:
 
         q1, q2, q3 = parsed
         customer = self.customers.by_phone(from_) if from_ else None
-        name = (
-            customer.name
-            if customer
-            else (f"SMS {from_[-4:]}" if from_ else "SMS user")
-        )
+        name = customer.name if customer else (f"SMS {from_[-4:]}" if from_ else "SMS user")
 
         response, alert_created = FeedbackController().submit(
             name=name,

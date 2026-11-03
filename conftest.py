@@ -11,4 +11,5 @@ import pytest
 def _offline_integrations(settings):
     settings.SMTP_HOST = ""  # send_email -> console/log mode
     settings.AFRICASTALKING_API_KEY = ""  # sms -> mock mode
+    settings.SMS_PROVIDER = "africastalking"
     settings.AI_PROVIDER = "mock"

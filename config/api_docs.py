@@ -137,6 +137,53 @@ def schema(_request):
             },
         },
     }
+    document["paths"]["/api/sms/gateway/status"] = {
+        "get": {
+            "tags": ["Android SIM gateway"],
+            "summary": "Check gateway configuration",
+            "security": protected,
+            "responses": {
+                "200": {"description": "Provider and configuration flags; no credentials"},
+                "403": {"description": "Sign in first"},
+            },
+        }
+    }
+    document["paths"]["/api/sms/gateway/inbound"] = {
+        "post": {
+            "tags": ["Android SIM gateway"],
+            "summary": "Receive a signed Android SMS reply",
+            "description": (
+                "SMSGate signs the exact raw JSON body followed by X-Timestamp "
+                "using HMAC-SHA256. The signature must match the exact request bytes. "
+                "Unsigned Swagger requests are intentionally rejected."
+            ),
+            "parameters": [
+                {"in": "header", "name": name, "required": True, "schema": string}
+                for name in ["X-Timestamp", "X-Signature"]
+            ],
+            "requestBody": body(
+                {
+                    "id": string,
+                    "deviceId": string,
+                    "event": {**string, "enum": ["sms:received"]},
+                    "payload": {
+                        "type": "object",
+                        "required": ["sender", "message"],
+                        "properties": {
+                            "sender": string,
+                            "message": {**string, "example": "4 5 4"},
+                        },
+                    },
+                },
+                ["id", "deviceId", "event", "payload"],
+            ),
+            "responses": {
+                "200": {"description": "Reply processed, ignored, or duplicate"},
+                "400": {"description": "Invalid event"},
+                "403": {"description": "Invalid signature, timestamp, or device"},
+            },
+        }
+    }
     response = JsonResponse(document)
     response["Cache-Control"] = "no-store"
     return response

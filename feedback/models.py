@@ -74,6 +74,20 @@ class CommentInsight(models.Model):
         db_table = "comment_insights"
 
 
+class GatewayReceipt(models.Model):
+    """Persist processed webhook IDs so phone retries never duplicate ratings."""
+
+    device_id = models.CharField(max_length=128)
+    event_id = models.CharField(max_length=128)
+    result = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["device_id", "event_id"], name="unique_gateway_event")
+        ]
+
+
 class EmailLog(models.Model):
     """A record of every email the system sends, for audit + dashboard view."""
 

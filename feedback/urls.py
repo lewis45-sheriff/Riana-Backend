@@ -5,8 +5,11 @@ from __future__ import annotations
 from django.urls import path
 
 from feedback import views
+from feedback.gateway_views import GatewayStatusView, GatewayWebhookView
 
 urlpatterns = [
+    path("sms/gateway/inbound", GatewayWebhookView.as_view()),
+    path("sms/gateway/status", GatewayStatusView.as_view()),
     path("feedback", views.FeedbackView.as_view()),
     path("feedback/page", views.ResponsesPageView.as_view()),
     path("feedback/<int:response_id>", views.FeedbackDetailView.as_view()),
