@@ -110,6 +110,22 @@ def test_gateway_failure_has_no_paid_provider_fallback(settings):
     assert post.call_count == 1
 
 
+def test_gateway_validation_error_is_shown_without_password(settings):
+    settings.SMS_PROVIDER = "smsgate"
+    settings.SMSGATE_USERNAME = "test-user"
+    settings.SMSGATE_PASSWORD = "test-password"
+    request = httpx.Request("POST", "https://api.sms-gate.app/3rdparty/v1/messages")
+    response = httpx.Response(
+        400, json={"error": "Invalid recipient test-password"}, request=request
+    )
+    with patch("feedback.services.sim_gateway.httpx.post", return_value=response):
+        result = sms.send_sms("+254105054766", "Rate us")
+    assert result["status"] == "error"
+    assert "HTTP 400" in result["error"]
+    assert "Invalid recipient" in result["error"]
+    assert "test-password" not in result["error"]
+
+
 @pytest.mark.parametrize(
     "code,expected", [(100, "accepted"), (101, "accepted"), (102, "accepted"), (406, "error")]
 )

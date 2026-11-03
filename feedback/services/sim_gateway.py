@@ -31,6 +31,23 @@ def send_message(phone: str, message: str) -> dict:
         if not isinstance(data, dict) or not data.get("id"):
             return {"status": "error", "error": "Gateway returned no message ID"}
         return {"status": "queued", "message_id": data["id"], "transport": "smsgate"}
+    except httpx.HTTPStatusError as exc:
+        try:
+            error = exc.response.json()
+            detail = error.get("error") or error.get("message") or error.get("detail")
+            if not isinstance(detail, str):
+                detail = "Check phone number, device selection, and gateway settings"
+        except (ValueError, AttributeError):
+            detail = "Check phone number, device selection, and gateway settings"
+        for secret in (settings.SMSGATE_PASSWORD, settings.SMSGATE_WEBHOOK_SECRET):
+            if secret:
+                detail = detail.replace(secret, "[redacted]")
+        return {
+            "status": "error",
+            "error": (
+                f"Gateway rejected the request (HTTP {exc.response.status_code}): {detail[:400]}"
+            ),
+        }
     except (httpx.HTTPError, ValueError):
         # Do not log credential-bearing requests or retry ambiguous submissions automatically.
         return {"status": "error", "error": "Gateway submission could not be confirmed"}
