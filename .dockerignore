@@ -6,3 +6,6 @@ venv/
 .ruff_cache/
 db.sqlite3
 .env
+.env.*
+.git
+ops

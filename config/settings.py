@@ -10,8 +10,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load .env from the server dir or the repo root if present.
-load_dotenv(BASE_DIR / ".env")
-load_dotenv(BASE_DIR.parent / ".env")
+if os.environ.get("RIANA_ENV_FILE"):
+    load_dotenv(os.environ["RIANA_ENV_FILE"])
+else:
+    load_dotenv(BASE_DIR / ".env")
+    load_dotenv(BASE_DIR.parent / ".env")
 
 
 def env(key: str, default: str = "") -> str:

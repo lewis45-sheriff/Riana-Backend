@@ -1,18 +1,154 @@
-name: Deploy backend
+name: backend CI/CD
 
 on:
   push:
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  quality:
+    name: Ruff and pytest on PostgreSQL
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: feedback
+          POSTGRES_USER: feedback
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://feedback:ci-only-password@localhost:5432/feedback
+      DJANGO_SECRET_KEY: ci-only-not-a-production-secret
+      AI_PROVIDER: mock
+      SMS_PROVIDER: africastalking
+      AUTO_THANKYOU_ENABLED: 'false'
     steps:
-      - name: SSH deploy to EC2
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: bash ~/apps/deploy_backend.sh
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: ruff check .
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py migrate --noinput
+      - run: pytest -q
+
+  build-scan:
+    name: Build Docker and scan release
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+
+      - name: Build Docker image
+        run: docker build -t riana-backend:${{ github.sha }} .
+      - name: Scan dependencies and secrets
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          skip-dirs: .git
+      - name: Scan built image
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: riana-backend:${{ github.sha }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+      - name: Package tested revision
+        run: |
+          git archive --format=tar HEAD -o release.tar
+          pip freeze > requirements.release.txt
+          tar -rf release.tar requirements.release.txt
+          gzip -c release.tar > release.tgz
+          sha256sum release.tgz > release.tgz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ github.sha }}
+          path: |
+            release.tgz
+            release.tgz.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+  staging:
+    name: Migrate and deploy staging
+    needs: build-scan
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-${{ github.sha }}
+      - name: Deploy exact release and smoke test
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGING_EC2_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_EC2_USER }}
+          DEPLOY_KEY: ${{ secrets.STAGING_EC2_SSH_KEY }}
+          DEPLOY_HOST_KEYS: ${{ vars.STAGING_SSH_HOST_KEYS }}
+        run: bash ops/dispatch.sh staging '${{ github.sha }}'
+
+  production-policy:
+    name: Verify production requires approval
+    needs: staging
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.request('GET /repos/{owner}/{repo}/environments/production', context.repo);
+            const guarded = (data.protection_rules || []).some(rule =>
+              rule.type === 'required_reviewers' && rule.reviewers?.length > 0);
+            if (!guarded) core.setFailed('Configure required reviewers on the production environment before deployment.');
+
+  production:
+    name: Approved production release
+    needs: [build-scan, staging, production-policy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://smartedu.co.ke
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-${{ github.sha }}
+      - name: Promote staging-tested release and smoke test
+        env:
+          DEPLOY_HOST: ${{ secrets.EC2_HOST }}
+          DEPLOY_USER: ${{ secrets.EC2_USER }}
+          DEPLOY_KEY: ${{ secrets.EC2_SSH_KEY }}
+          DEPLOY_HOST_KEYS: ${{ vars.PRODUCTION_SSH_HOST_KEYS }}
+        run: bash ops/dispatch.sh production '${{ github.sha }}'
