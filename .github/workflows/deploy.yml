@@ -27,14 +27,14 @@ jobs:
           POSTGRES_PASSWORD: ci-only-password
         ports: ['5432:5432']
         options: >-
-          --health-cmd pg_isready --health-interval 5s
+          --health-cmd "pg_isready -U feedback -d feedback" --health-interval 5s
           --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://feedback:ci-only-password@localhost:5432/feedback
-      DJANGO_SECRET_KEY: ci-only-not-a-production-secret
+      DJANGO_SECRET_KEY: ci-only-not-a-production-secret-minimum-32-characters
       AI_PROVIDER: mock
       SMS_PROVIDER: africastalking
-      AUTO_THANKYOU_ENABLED: 'false'
+      AUTO_THANKYOU_ENABLED: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
