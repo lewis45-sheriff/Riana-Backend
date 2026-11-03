@@ -16,7 +16,11 @@ from django.conf import settings
 
 logger = logging.getLogger("sms")
 
-AT_SMS_URL = "https://api.sandbox.africastalking.com/version1/messaging"
+AT_SMS_URL = (
+    "https://api.sandbox.africastalking.com/version1/messaging"
+    if settings.AFRICASTALKING_USERNAME.lower() == "sandbox"
+    else "https://api.africastalking.com/version1/messaging"
+)
 
 INVITE_TEMPLATE = (
     "Thanks for buying our paint! Rate us 1-5 for product, care and "
