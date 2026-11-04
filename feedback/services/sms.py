@@ -28,6 +28,10 @@ INVITE_TEMPLATE = (
 )
 
 
+class LiveAfricaTalkingConfigurationError(Exception):
+    """Raised when live Africa's Talking credentials are unavailable."""
+
+
 def is_mock() -> bool:
     if settings.SMS_PROVIDER == "smsgate":
         return False  # Missing gateway credentials must fail rather than simulate a send.
@@ -69,6 +73,86 @@ def send_sms(to: str, message: str) -> dict:
     except Exception as exc:  # pragma: no cover - network dependent
         logger.exception("SMS send failed; continuing")
         return {"status": "error", "error": str(exc)}
+
+
+def send_live_africastalking_sms(to: str, message: str) -> dict:
+    """Send directly through Africa's Talking live API, bypassing provider selection."""
+    username = settings.AFRICASTALKING_USERNAME.strip()
+    api_key = settings.AFRICASTALKING_API_KEY.strip()
+    if not username or not api_key:
+        raise LiveAfricaTalkingConfigurationError(
+            "Live Africa's Talking username and API key must be configured."
+        )
+    if username.lower() == "sandbox":
+        raise LiveAfricaTalkingConfigurationError(
+            "This endpoint requires a live Africa's Talking account, not the sandbox username."
+        )
+
+    headers = {
+        "apiKey": api_key,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+    }
+    data = {"username": username, "to": to, "message": message}
+    if settings.AFRICASTALKING_SENDER_ID:
+        data["from"] = settings.AFRICASTALKING_SENDER_ID
+
+    try:
+        response = httpx.post(
+            "https://api.africastalking.com/version1/messaging",
+            data=data,
+            headers=headers,
+            timeout=15,
+        )
+        response.raise_for_status()
+        provider = response.json()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "Africa's Talking rejected a live SMS request (HTTP %s).",
+            exc.response.status_code,
+        )
+        return {
+            "status": "error",
+            "provider": "africastalking",
+            "detail": f"Africa's Talking rejected the request (HTTP {exc.response.status_code}).",
+        }
+    except (httpx.HTTPError, ValueError):
+        logger.exception("Could not confirm live SMS acceptance from Africa's Talking.")
+        return {
+            "status": "error",
+            "provider": "africastalking",
+            "detail": "Could not confirm acceptance from Africa's Talking.",
+        }
+
+    if not isinstance(provider, dict):
+        return {
+            "status": "error",
+            "provider": "africastalking",
+            "detail": "Africa's Talking returned an invalid response.",
+        }
+    message_data = provider.get("SMSMessageData")
+    recipients = message_data.get("Recipients", []) if isinstance(message_data, dict) else []
+    if not isinstance(recipients, list):
+        recipients = []
+    recipient_statuses = [
+        {"statusCode": recipient.get("statusCode"), "status": recipient.get("status")}
+        for recipient in recipients
+        if isinstance(recipient, dict)
+    ]
+    accepted = bool(recipients) and all(
+        isinstance(recipient, dict) and recipient.get("statusCode") in {100, 101, 102}
+        for recipient in recipients
+    )
+    return {
+        "status": "accepted" if accepted else "error",
+        "provider": "africastalking",
+        "detail": (
+            "Accepted by Africa's Talking; delivery is not confirmed."
+            if accepted
+            else "Africa's Talking did not accept the SMS."
+        ),
+        "recipients": recipient_statuses,
+    }
 
 
 def send_invite(to: str) -> dict:

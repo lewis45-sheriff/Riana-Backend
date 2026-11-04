@@ -8,7 +8,7 @@ services.
 from __future__ import annotations
 
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response as DRFResponse
 from rest_framework.views import APIView
@@ -19,6 +19,10 @@ from feedback.controllers.dashboard_controller import DashboardController
 from feedback.controllers.email_controller import EmailController
 from feedback.controllers.feedback_controller import FeedbackController
 from feedback.controllers.sms_controller import SMSController
+from feedback.services.sms import (
+    LiveAfricaTalkingConfigurationError,
+    send_live_africastalking_sms,
+)
 from feedback.serializers import (
     AlertAckSerializer,
     AlertSerializer,
@@ -29,6 +33,7 @@ from feedback.serializers import (
     FeedbackCreateSerializer,
     FeedbackResultSerializer,
     InviteRequestSerializer,
+    LiveAfricaTalkingSMSRequestSerializer,
     PaginatedEmailsSerializer,
     PaginatedResponsesSerializer,
     ResponseSerializer,
@@ -272,6 +277,32 @@ class SMSInviteView(APIView):
             serializer.validated_data.get("name"),
         )
         return DRFResponse(result)
+
+
+class LiveAfricaTalkingSMSView(APIView):
+    """Staff-only endpoint that always uses the Africa's Talking live API."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request: Request) -> DRFResponse:
+        serializer = LiveAfricaTalkingSMSRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = send_live_africastalking_sms(
+                serializer.validated_data["phone"],
+                serializer.validated_data["message"],
+            )
+        except LiveAfricaTalkingConfigurationError as exc:
+            return DRFResponse(
+                {"status": "error", "detail": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        response_status = (
+            status.HTTP_200_OK
+            if result["status"] == "accepted"
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        return DRFResponse(result, status=response_status)
 
 
 class SMSInboundView(APIView):

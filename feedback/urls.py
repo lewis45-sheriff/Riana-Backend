@@ -26,5 +26,6 @@ urlpatterns = [
     path("alerts/<int:alert_id>/send-sms", views.AlertSendSmsView.as_view()),
     path("ai/ask", views.AskView.as_view()),
     path("sms/invite", views.SMSInviteView.as_view()),
+    path("sms/africastalking/send", views.LiveAfricaTalkingSMSView.as_view()),
     path("sms/inbound", views.SMSInboundView.as_view()),
 ]

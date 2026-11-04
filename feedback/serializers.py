@@ -121,6 +121,15 @@ class InviteRequestSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=160, required=False, allow_null=True)
 
 
+class LiveAfricaTalkingSMSRequestSerializer(serializers.Serializer):
+    phone = serializers.RegexField(
+        regex=r"^\+[1-9]\d{7,14}$",
+        max_length=16,
+        error_messages={"invalid": "Enter an international phone number such as +254700000000."},
+    )
+    message = serializers.CharField(max_length=320, allow_blank=False)
+
+
 class AlertAckSerializer(serializers.Serializer):
     status = serializers.CharField(default="acknowledged")
 

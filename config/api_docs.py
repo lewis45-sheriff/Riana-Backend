@@ -119,6 +119,61 @@ def schema(_request):
                     },
                 }
             },
+            "/api/sms/africastalking/send": {
+                "post": {
+                    "tags": ["Africa's Talking live SMS"],
+                    "summary": "Send a live SMS through Africa's Talking",
+                    "security": protected,
+                    "description": (
+                        "Staff-only provider-specific endpoint. It always uses the live "
+                        "Africa's Talking API, regardless of SMS_PROVIDER, and rejects "
+                        "sandbox or missing credentials. SMS charges may apply. A 200 "
+                        "response means the provider accepted the request, not that the "
+                        "handset received the SMS."
+                    ),
+                    "requestBody": body(
+                        {
+                            "phone": {
+                                **string,
+                                "pattern": r"^\+[1-9]\d{7,14}$",
+                                "example": "+254700000000",
+                                "description": "International number in E.164 format.",
+                            },
+                            "message": {
+                                **string,
+                                "maxLength": 320,
+                                "example": "Thanks for buying our paint! Reply 4 5 4 to rate us.",
+                            },
+                        },
+                        ["phone", "message"],
+                    ),
+                    "responses": {
+                        "200": {
+                            "description": "Accepted by Africa's Talking; delivery is not confirmed.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {"type": "string", "example": "accepted"},
+                                            "provider": {"type": "string", "example": "africastalking"},
+                                            "detail": {"type": "string"},
+                                            "recipients": {
+                                                "type": "array",
+                                                "items": {"type": "object"},
+                                            },
+                                        },
+                                    }
+                                }
+                            },
+                        },
+                        "400": {"description": "Invalid phone number or message."},
+                        "403": {"description": "Sign in as a staff user."},
+                        "502": {"description": "Africa's Talking rejected the request or could not be reached."},
+                        "503": {"description": "Live credentials are missing or sandbox mode is configured."},
+                    },
+                }
+            },
             "/api/sms/inbound": {
                 "post": {
                     "tags": ["SMS"],
