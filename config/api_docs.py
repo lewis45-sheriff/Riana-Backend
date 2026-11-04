@@ -149,14 +149,19 @@ def schema(_request):
                     ),
                     "responses": {
                         "200": {
-                            "description": "Accepted by Africa's Talking; delivery is not confirmed.",
+                            "description": (
+                                "Accepted by Africa's Talking; delivery is not confirmed."
+                            ),
                             "content": {
                                 "application/json": {
                                     "schema": {
                                         "type": "object",
                                         "properties": {
                                             "status": {"type": "string", "example": "accepted"},
-                                            "provider": {"type": "string", "example": "africastalking"},
+                                            "provider": {
+                                                "type": "string",
+                                                "example": "africastalking",
+                                            },
                                             "detail": {"type": "string"},
                                             "recipients": {
                                                 "type": "array",
@@ -169,8 +174,16 @@ def schema(_request):
                         },
                         "400": {"description": "Invalid phone number or message."},
                         "403": {"description": "Sign in as a staff user."},
-                        "502": {"description": "Africa's Talking rejected the request or could not be reached."},
-                        "503": {"description": "Live credentials are missing or sandbox mode is configured."},
+                        "502": {
+                            "description": (
+                                "Africa's Talking rejected the request or could not be reached."
+                            )
+                        },
+                        "503": {
+                            "description": (
+                                "Live credentials are missing or sandbox mode is configured."
+                            )
+                        },
                     },
                 }
             },

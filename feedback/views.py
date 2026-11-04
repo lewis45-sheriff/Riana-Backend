@@ -19,10 +19,6 @@ from feedback.controllers.dashboard_controller import DashboardController
 from feedback.controllers.email_controller import EmailController
 from feedback.controllers.feedback_controller import FeedbackController
 from feedback.controllers.sms_controller import SMSController
-from feedback.services.sms import (
-    LiveAfricaTalkingConfigurationError,
-    send_live_africastalking_sms,
-)
 from feedback.serializers import (
     AlertAckSerializer,
     AlertSerializer,
@@ -39,6 +35,10 @@ from feedback.serializers import (
     ResponseSerializer,
     SendReplySerializer,
     SmartReplySerializer,
+)
+from feedback.services.sms import (
+    LiveAfricaTalkingConfigurationError,
+    send_live_africastalking_sms,
 )
 
 
